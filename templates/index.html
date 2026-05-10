@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Smart Task Manager</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#f0f4f8;color:#333}
+nav{background:#c0392b;color:#fff;padding:14px 30px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+nav h1{font-size:1.3rem;letter-spacing:.5px}
+nav button{background:rgba(255,255,255,.2);color:#fff;border:1px solid #fff;padding:6px 14px;border-radius:4px;cursor:pointer;margin-left:8px}
+nav button:hover{background:rgba(255,255,255,.35)}
+.section{display:none}.section.active{display:block}
+/* AUTH */
+.auth-wrap{max-width:420px;margin:60px auto;background:#fff;border-radius:10px;padding:36px;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+.auth-tabs{display:flex;margin-bottom:22px}
+.auth-tabs button{flex:1;padding:10px;border:none;background:#eee;cursor:pointer;font-size:1rem;transition:.2s}
+.auth-tabs button.active{background:#c0392b;color:#fff}
+.fg{margin-bottom:14px}
+.fg label{display:block;margin-bottom:5px;font-weight:600;font-size:.88rem}
+.fg input,.fg select,.fg textarea{width:100%;padding:9px 11px;border:1px solid #ccc;border-radius:6px;font-size:.93rem}
+.fg textarea{resize:vertical;min-height:65px}
+.btn{width:100%;padding:11px;background:#c0392b;color:#fff;border:none;border-radius:6px;font-size:1rem;cursor:pointer}
+.btn:hover{background:#a93226}
+.msg{text-align:center;margin-top:10px;font-size:.88rem;min-height:18px}
+.msg.err{color:#c0392b}.msg.ok{color:#27ae60}
+/* LAYOUT */
+.layout{max-width:1100px;margin:28px auto;padding:0 18px;display:grid;grid-template-columns:1fr 330px;gap:22px}
+@media(max-width:740px){.layout{grid-template-columns:1fr}}
+.card{background:#fff;border-radius:10px;padding:22px;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:20px}
+.card h2{color:#c0392b;margin-bottom:16px;font-size:1.05rem;border-bottom:1px solid #f0f0f0;padding-bottom:10px}
+/* TASK LIST */
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.filters button{padding:5px 13px;border:1px solid #ccc;background:#fff;border-radius:20px;cursor:pointer;font-size:.82rem}
+.filters button.active{background:#c0392b;color:#fff;border-color:#c0392b}
+#task-list{list-style:none}
+#task-list li{border-left:4px solid #ccc;background:#f9f9f9;border-radius:7px;padding:12px 14px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.priority-high{border-left-color:#e74c3c!important}
+.priority-medium{border-left-color:#f39c12!important}
+.priority-low{border-left-color:#27ae60!important}
+.task-info h4{font-size:.94rem;margin-bottom:3px}
+.task-info p{font-size:.8rem;color:#666;margin-bottom:5px}
+.badges{display:flex;gap:5px;flex-wrap:wrap}
+.badge{padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:600}
+.b-pending{background:#fef9e7;color:#f39c12;border:1px solid #f39c12}
+.b-in_progress{background:#eaf4fb;color:#2980b9;border:1px solid #2980b9}
+.b-completed{background:#eafaf1;color:#27ae60;border:1px solid #27ae60}
+.b-high{background:#fadbd8;color:#c0392b}
+.b-medium{background:#fef9e7;color:#d68910}
+.b-low{background:#eafaf1;color:#1e8449}
+.b-date{background:#f0f0f0;color:#555}
+.task-btns{display:flex;flex-direction:column;gap:5px;min-width:56px}
+.task-btns button{border:none;padding:5px 8px;border-radius:5px;cursor:pointer;font-size:.78rem;font-weight:600}
+.btn-edit{background:#eaf4fb;color:#2980b9}
+.btn-edit:hover{background:#d0e8f5}
+.btn-del{background:#fadbd8;color:#c0392b}
+.btn-del:hover{background:#f5c6c0}
+.empty{text-align:center;color:#aaa;padding:28px 0;font-size:.92rem}
+/* ANALYTICS */
+.ag{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:13px}
+.stat{background:#f8f9fa;border-radius:8px;padding:12px;text-align:center}
+.stat .val{font-size:1.55rem;font-weight:700;color:#c0392b}
+.stat .lbl{font-size:.72rem;color:#888;margin-top:2px}
+.pbar-wrap{margin-top:8px}
+.pbar-wrap .plabel{font-size:.8rem;color:#555;display:flex;justify-content:space-between;margin-bottom:5px}
+.pbar{background:#eee;border-radius:10px;height:10px}
+.pbar-fill{background:#c0392b;height:10px;border-radius:10px;transition:width .5s}
+/* WS */
+#ws-row{display:flex;align-items:center;gap:7px;margin-bottom:11px;font-size:.8rem}
+#ws-dot{width:9px;height:9px;border-radius:50%;background:#ccc;flex-shrink:0}
+#ws-dot.on{background:#27ae60}
+#notif-list{list-style:none;max-height:170px;overflow-y:auto}
+#notif-list li{font-size:.79rem;padding:6px 9px;background:#f0f4f8;border-radius:5px;margin-bottom:5px;border-left:3px solid #c0392b}
+/* MODAL */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;align-items:center;justify-content:center}
+.overlay.open{display:flex}
+.modal{background:#fff;border-radius:10px;padding:26px;width:90%;max-width:430px}
+.modal h3{color:#c0392b;margin-bottom:16px}
+.modal-btns{display:flex;gap:10px;margin-top:14px}
+.modal-btns button{flex:1;padding:10px;border-radius:6px;border:none;cursor:pointer;font-size:.93rem}
+.btn-cancel{background:#eee;color:#333}
+.btn-cancel:hover{background:#ddd}
+</style>
+</head>
+<body>
+
+<nav>
+  <h1>📋 Smart Task Manager</h1>
+  <div style="display:flex;align-items:center;gap:6px">
+    <span id="nav-user" style="font-size:.88rem"></span>
+    <button onclick="logout()" id="btn-logout" style="display:none">Logout</button>
+  </div>
+</nav>
+
+<!-- ═══ AUTH ═══ -->
+<div id="auth-section" class="section active">
+  <div class="auth-wrap">
+    <div class="auth-tabs">
+      <button class="active" id="tab-login" onclick="switchTab('login')">Login</button>
+      <button id="tab-register" onclick="switchTab('register')">Register</button>
+    </div>
+    <!-- Login -->
+    <div id="login-form">
+      <div class="fg"><label>Username</label><input id="l-user" placeholder="Username"/></div>
+      <div class="fg"><label>Password</label><input id="l-pass" type="password" placeholder="Password"/></div>
+      <button class="btn" onclick="doLogin()">Login</button>
+      <p class="msg" id="l-msg"></p>
+    </div>
+    <!-- Register -->
+    <div id="register-form" style="display:none">
+      <div class="fg"><label>Username</label><input id="r-user" placeholder="Choose username"/></div>
+      <div class="fg"><label>Email</label><input id="r-email" type="email" placeholder="your@email.com"/></div>
+      <div class="fg"><label>Password</label><input id="r-pass" type="password" placeholder="Min 6 characters"/></div>
+      <button class="btn" onclick="doRegister()">Create Account</button>
+      <p class="msg" id="r-msg"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div id="app-section" class="section">
+  <div class="layout">
+
+    <!-- LEFT -->
+    <div>
+      <!-- Add Task -->
+      <div class="card">
+        <h2>➕ Add New Task</h2>
+        <div class="fg"><label>Title *</label><input id="t-title" placeholder="Task title"/></div>
+        <div class="fg"><label>Description</label><textarea id="t-desc" placeholder="Optional description"></textarea></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="fg"><label>Priority</label>
+            <select id="t-pri"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+          </div>
+          <div class="fg"><label>Status</label>
+            <select id="t-stat"><option value="pending" selected>Pending</option><option value="in_progress">In Progress</option><option value="completed">Completed</option></select>
+          </div>
+        </div>
+        <button class="btn" onclick="addTask()">Add Task</button>
+        <p class="msg" id="t-msg"></p>
+      </div>
+
+      <!-- Task List -->
+      <div class="card">
+        <h2>📝 My Tasks</h2>
+        <div class="filters">
+          <button class="active" onclick="filter('all',this)">All</button>
+          <button onclick="filter('pending',this)">Pending</button>
+          <button onclick="filter('in_progress',this)">In Progress</button>
+          <button onclick="filter('completed',this)">Completed</button>
+        </div>
+        <ul id="task-list"><li class="empty">Loading...</li></ul>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div>
+      <!-- Analytics -->
+      <div class="card">
+        <h2>📊 Analytics</h2>
+        <div class="ag">
+          <div class="stat"><div class="val" id="a-total">0</div><div class="lbl">Total Tasks</div></div>
+          <div class="stat"><div class="val" id="a-done">0</div><div class="lbl">Completed</div></div>
+          <div class="stat"><div class="val" id="a-pend">0</div><div class="lbl">Pending</div></div>
+          <div class="stat"><div class="val" id="a-prog">0</div><div class="lbl">In Progress</div></div>
+        </div>
+        <div class="pbar-wrap">
+          <div class="plabel"><span>Completion Rate</span><span id="a-pct">0%</span></div>
+          <div class="pbar"><div class="pbar-fill" id="a-bar" style="width:0%"></div></div>
+        </div>
+        <button class="btn" style="margin-top:12px;font-size:.83rem;padding:8px" onclick="loadAnalytics()">🔄 Refresh Analytics</button>
+      </div>
+
+      <!-- WebSocket Live Feed -->
+      <div class="card">
+        <h2>🔔 Live Notifications</h2>
+        <div id="ws-row"><div id="ws-dot"></div><span id="ws-text">Connecting...</span></div>
+        <ul id="notif-list"><li style="font-size:.79rem;color:#aaa">No events yet...</li></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ EDIT MODAL ═══ -->
+<div class="overlay" id="edit-modal">
+  <div class="modal">
+    <h3>✏️ Edit Task</h3>
+    <input type="hidden" id="e-id"/>
+    <div class="fg"><label>Title *</label><input id="e-title"/></div>
+    <div class="fg"><label>Description</label><textarea id="e-desc"></textarea></div>
+    <div class="fg"><label>Priority</label>
+      <select id="e-pri"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
+    </div>
+    <div class="fg"><label>Status</label>
+      <select id="e-stat"><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="completed">Completed</option></select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="saveEdit()">Save Changes</button>
+    </div>
+    <p class="msg" id="e-msg"></p>
+  </div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────
+let allTasks = [];
+let curFilter = 'all';
+
+// ─── WebSocket (FIX #2 — proper connect + notifications) ─
+const socket = io();
+
+socket.on('connect', () => {
+  document.getElementById('ws-dot').classList.add('on');
+  document.getElementById('ws-text').textContent = 'Connected – Live Updates Active';
+});
+socket.on('disconnect', () => {
+  document.getElementById('ws-dot').classList.remove('on');
+  document.getElementById('ws-text').textContent = 'Disconnected';
+});
+// Receive real-time task updates
+socket.on('task_update', (data) => {
+  pushNotif(`${(data.action||'').toUpperCase()}: ${data.task?.title || 'Task'}`);
+  loadTasks();
+  loadAnalytics();
+});
+
+function pushNotif(msg) {
+  const list = document.getElementById('notif-list');
+  // Remove placeholder
+  if (list.firstChild && list.firstChild.style && list.firstChild.style.color === 'rgb(170, 170, 170)') list.innerHTML = '';
+  const li = document.createElement('li');
+  li.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  list.prepend(li);
+  if (list.children.length > 12) list.removeChild(list.lastChild);
+}
+
+// ─── Auth helpers ─────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('login-form').style.display    = tab === 'login'    ? '' : 'none';
+  document.getElementById('register-form').style.display = tab === 'register' ? '' : 'none';
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+}
+
+async function doLogin() {
+  const username = document.getElementById('l-user').value.trim();
+  const password = document.getElementById('l-pass').value;
+  const msg = document.getElementById('l-msg');
+  if (!username || !password) { setMsg(msg,'Fill in all fields',true); return; }
+  const res = await fetch('/api/login', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({username, password})
+  });
+  const data = await res.json();
+  if (res.ok) showApp(data.user.username);
+  else setMsg(msg, data.error, true);
+}
+
+async function doRegister() {
+  const username = document.getElementById('r-user').value.trim();
+  const email    = document.getElementById('r-email').value.trim();
+  const password = document.getElementById('r-pass').value;
+  const msg = document.getElementById('r-msg');
+  if (!username||!email||!password) { setMsg(msg,'Fill in all fields',true); return; }
+  const res = await fetch('/api/register', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({username, email, password})
+  });
+  const data = await res.json();
+  if (res.ok) showApp(data.user.username);
+  else setMsg(msg, data.error, true);
+}
+
+async function logout() {
+  await fetch('/api/logout');
+  document.getElementById('auth-section').classList.add('active');
+  document.getElementById('app-section').classList.remove('active');
+  document.getElementById('btn-logout').style.display = 'none';
+  document.getElementById('nav-user').textContent = '';
+  allTasks = [];
+}
+
+function showApp(username) {
+  document.getElementById('auth-section').classList.remove('active');
+  document.getElementById('app-section').classList.add('active');
+  document.getElementById('nav-user').textContent = `👤 ${username}`;
+  document.getElementById('btn-logout').style.display = '';
+  loadTasks();
+  loadAnalytics();
+}
+
+// ─── Task CRUD (FIX #3 — full UI operations) ─────────────
+async function loadTasks() {
+  const res = await fetch('/api/tasks');
+  if (!res.ok) return;
+  const data = await res.json();
+  allTasks = data.tasks || [];
+  renderTasks();
+}
+
+function renderTasks() {
+  const list = document.getElementById('task-list');
+  const tasks = curFilter === 'all' ? allTasks : allTasks.filter(t => t.status === curFilter);
+  if (!tasks.length) { list.innerHTML = '<li class="empty">No tasks found.</li>'; return; }
+  list.innerHTML = tasks.map(t => `
+    <li class="priority-${t.priority}">
+      <div class="task-info">
+        <h4>${esc(t.title)}</h4>
+        ${t.description ? `<p>${esc(t.description)}</p>` : ''}
+        <div class="badges">
+          <span class="badge b-${t.status}">${t.status.replace('_',' ')}</span>
+          <span class="badge b-${t.priority}">${t.priority}</span>
+          <span class="badge b-date">${(t.created_date||'').slice(0,10)}</span>
+        </div>
+      </div>
+      <div class="task-btns">
+        <button class="btn-edit" onclick="openEdit(${t.id})">✏️ Edit</button>
+        <button class="btn-del"  onclick="deleteTask(${t.id})">🗑️ Del</button>
+      </div>
+    </li>`).join('');
+}
+
+function filter(status, btn) {
+  curFilter = status;
+  document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTasks();
+}
+
+async function addTask() {
+  const title       = document.getElementById('t-title').value.trim();
+  const description = document.getElementById('t-desc').value.trim();
+  const priority    = document.getElementById('t-pri').value;
+  const status      = document.getElementById('t-stat').value;
+  const msg         = document.getElementById('t-msg');
+  if (!title) { setMsg(msg,'Title is required',true); return; }
+
+  const res = await fetch('/api/tasks', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({title, description, priority, status})
+  });
+  const data = await res.json();
+  if (res.ok) {
+    setMsg(msg,'✅ Task added!',false);
+    document.getElementById('t-title').value = '';
+    document.getElementById('t-desc').value  = '';
+    // Emit WebSocket event so all connected tabs update
+    socket.emit('task_action', {action:'created', task: data.task});
+    loadTasks(); loadAnalytics();
+  } else { setMsg(msg, data.error, true); }
+}
+
+async function deleteTask(id) {
+  if (!confirm('Delete this task?')) return;
+  const res = await fetch(`/api/tasks/${id}`, {method:'DELETE'});
+  const data = await res.json();
+  if (res.ok) {
+    pushNotif(`DELETED: Task #${id}`);
+    socket.emit('task_action', {action:'deleted', task:{id, title:`Task #${id}`}});
+    loadTasks(); loadAnalytics();
+  }
+}
+
+// Edit Modal
+function openEdit(id) {
+  const t = allTasks.find(x => x.id === id);
+  if (!t) return;
+  document.getElementById('e-id').value    = t.id;
+  document.getElementById('e-title').value = t.title;
+  document.getElementById('e-desc').value  = t.description || '';
+  document.getElementById('e-pri').value   = t.priority;
+  document.getElementById('e-stat').value  = t.status;
+  document.getElementById('e-msg').textContent = '';
+  document.getElementById('edit-modal').classList.add('open');
+}
+function closeModal() { document.getElementById('edit-modal').classList.remove('open'); }
+
+async function saveEdit() {
+  const id          = document.getElementById('e-id').value;
+  const title       = document.getElementById('e-title').value.trim();
+  const description = document.getElementById('e-desc').value.trim();
+  const priority    = document.getElementById('e-pri').value;
+  const status      = document.getElementById('e-stat').value;
+  const msg         = document.getElementById('e-msg');
+  if (!title) { setMsg(msg,'Title required',true); return; }
+
+  const res = await fetch(`/api/tasks/${id}`, {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({title, description, priority, status})
+  });
+  const data = await res.json();
+  if (res.ok) {
+    closeModal();
+    socket.emit('task_action', {action:'updated', task: data.task});
+    loadTasks(); loadAnalytics();
+  } else { setMsg(msg, data.error, true); }
+}
+
+// ─── Analytics ────────────────────────────────────────────
+async function loadAnalytics() {
+  const res = await fetch('/api/analytics');
+  if (!res.ok) return;
+  const d = await res.json();
+  document.getElementById('a-total').textContent = d.total_tasks;
+  document.getElementById('a-done').textContent  = d.completed_tasks;
+  document.getElementById('a-pend').textContent  = d.pending_tasks;
+  document.getElementById('a-prog').textContent  = d.in_progress_tasks;
+  document.getElementById('a-pct').textContent   = d.completion_percentage + '%';
+  document.getElementById('a-bar').style.width   = d.completion_percentage + '%';
+}
+
+// ─── Utils ────────────────────────────────────────────────
+function setMsg(el, text, isErr) {
+  el.textContent = text;
+  el.className = 'msg ' + (isErr ? 'err' : 'ok');
+  setTimeout(() => { el.textContent = ''; el.className = 'msg'; }, 3500);
+}
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── Auto-login check ─────────────────────────────────────
+(async () => {
+  const res = await fetch('/api/me');
+  if (res.ok) { const d = await res.json(); showApp(d.user.username); }
+})();
+</script>
+</body>
+</html>
